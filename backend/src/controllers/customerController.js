@@ -43,12 +43,6 @@ const createCustomer = async function (req, res) {
         if (!isValid(phone)) return res.status(400).send({ status: false, message: "Please enter phone" });
         if (!isValid(password)) return res.status(400).send({ status: false, message: "Please enter password" });
         if (!isValid(confirmPassword)) return res.status(400).send({ status: false, message: "Please enter confirmPassword" });
-        if (!isValid(address)) return res.status(400).send({ status: false, message: "Please enter address" });
-        if (!isValid(landmark)) return res.status(400).send({ status: false, message: "Please enter landmark" });
-        if (!isValid(city)) return res.status(400).send({ status: false, message: "Please enter city" });
-        if (!isValid(state)) return res.status(400).send({ status: false, message: "Please enter state" });
-        if (!isValid(country)) return res.status(400).send({ status: false, message: "Please enter country" });
-        if (!isValid(zipCode)) return res.status(400).send({ status: false, message: "Please enter zipCode" });
 
         if (password.length < 8 || password.length > 15) {
             return res.status(400).send({ status: false, message: "password length should be in the range of 8 to 15 only", });
@@ -62,13 +56,21 @@ const createCustomer = async function (req, res) {
         if (!phoneRegex.test(phone)) {
             return res.status(400).send({ status: false, message: "The user phone number should be indian may contain only 10 number" });
         }
-        if (!pincodeRegex.test(zipCode)) {
-            return res.status(400).send({ status: false, message: "pincode must be number and can not start from 0" });
-        }
 
         // validation for gender
         if (gender && ["male", "female", "other"].indexOf(gender) == -1) {
             return res.status(400).send({ status: false, msg: "gender must be 'male', 'female' or 'other' only" });
+        }
+
+        if (!isValid(address)) return res.status(400).send({ status: false, message: "Please enter address" });
+        if (!isValid(landmark)) return res.status(400).send({ status: false, message: "Please enter landmark" });
+        if (!isValid(city)) return res.status(400).send({ status: false, message: "Please enter city" });
+        if (!isValid(state)) return res.status(400).send({ status: false, message: "Please enter state" });
+        if (!isValid(country)) return res.status(400).send({ status: false, message: "Please enter country" });
+        if (!isValid(zipCode)) return res.status(400).send({ status: false, message: "Please enter zipCode" });
+
+        if (!pincodeRegex.test(zipCode)) {
+            return res.status(400).send({ status: false, message: "pincode must be number and can not start from 0" });
         }
 
         // checking uniqueness of email, phone and userName
@@ -123,39 +125,33 @@ const getCustomers = async function (req, res) {
         let queryparams = req.query;
 
         if (isValidRequestBody(queryparams)) {
-            let { firstName, lastName, userName, gender } = queryparams;
-
+            let { firstName } = queryparams;
             if ("firstName" in queryparams) {
-                if (Object.keys(firstName).length === 0) {
-                    return res.status(400).send({ status: false, message: 'firstName query is empty, either provide query value or deselect it.' });
-                }
-                filter['firstName'] = firstName;
-            }
-            if ("lastName" in queryparams) {
-                if (Object.keys(lastName).length === 0) {
-                    return res.status(400).send({ status: false, message: 'lastName query is empty, either provide query value or deselect it.' });
-                }
-                filter['lastName'] = lastName;
-            }
-            if ("userName" in queryparams) {
-                if (Object.keys(userName).length === 0) {
-                    return res.status(400).send({ status: false, message: 'userName query is empty, either provide query value or deselect it.' });
-                }
-                filter['userName'] = userName;
-            }
-            if ("gender" in queryparams) {
-                if (Object.keys(gender).length === 0) {
-                    return res.status(400).send({ status: false, message: 'gender query is empty, either provide query value or deselect it.' });
-                }
-                filter['gender'] = gender;
+                filter['firstName'] = { $regex: firstName, $options: "i" }     // $regex is used to filter the matching substrings, $options for upper and lower case both at once;
             }
         }
-        let limit = req.query.limit || 5;
-        let page = req.query.page || 1;
+        let end = req.query.end;
+        let start = req.query.start;
 
-        const customers = await customerModel.find(filter).select({ _id: 1, firstName: 1, lastName: 1, email: 1 }).sort({}).skip(limit * (page - 1)).limit(limit);
+        if ("sort" in queryparams) {
+            const customers = await customerModel.find(filter).select({ _id: 1, firstName: 1, lastName: 1, userName: 1, email: 1, phone: 1 }).sort({ firstName: 1 })
+            if (customers.length === 0) {
+                return res.status(404).send({ status: false, message: 'No Customer found' })
+            }
+            return res.status(200).send({ status: true, message: 'Sorted Data', data: customers })
+        }
+
+        if ("start" in queryparams && "end" in queryparams) {
+            const customers = await customerModel.find(filter).select({ _id: 1, firstName: 1, lastName: 1, userName: 1, email: 1, phone: 1 }).skip(start).limit(end)
+            if (customers.length === 0) {
+                return res.status(404).send({ status: false, message: 'No Product found' })
+            }
+            return res.status(200).send({ status: true, message: 'Sorted Data', data: customers })
+        }
+
+        const customers = await customerModel.find(filter).select({ _id: 1, firstName: 1, lastName: 1, userName: 1, email: 1, phone: 1 })//.sort({firstName:1})//.skip(limit * (page - 1)).limit(limit);
         if (customers.length == 0) {
-            return res.status(404).send({ status: false, message: "No such document exist with the given filters." });
+            return res.status(404).send({ status: false, message: "No document exist" });
         }
         return res.status(200).send({ status: true, data: customers });
     }
@@ -241,7 +237,7 @@ const updateCustomer = async function (req, res) {
             if (!isValid(userName)) return res.status(400).send({ status: false, message: "userName is not Valid" });
 
             let uniqueUserName = await customerModel.findOne({ userName });
-            if (uniqueUserName) return res.status(409).send({ status: false, message: "This userName already exists, Please try another one." });
+            if (uniqueUserName && uniqueUserName._id === customerId) return res.status(409).send({ status: false, message: "This userName already exists, Please try another one." });
 
             customerFound.userName = userName;
         }
@@ -250,8 +246,8 @@ const updateCustomer = async function (req, res) {
         if ("email" in data) {
             if (!isValid(email) || !emailRegex.test(email)) return res.status(400).send({ status: false, message: "email is not Valid" });
 
-            let uniqueEmail = await customerModel.findOne({ email });
-            if (uniqueEmail) return res.status(409).send({ status: false, message: "This email already exists, Please try another one." });
+            let customer = await customerModel.findOne({ email });
+            if (customer && customer._id === customerId) return res.status(409).send({ status: false, message: "This email already exists, Please try another one." });
 
             customerFound.email = email;
         }
@@ -261,7 +257,7 @@ const updateCustomer = async function (req, res) {
             if (!isValid(phone) || !phoneRegex.test(phone)) return res.status(400).send({ status: false, message: "phone is not Valid" });
 
             let uniquephone = await customerModel.findOne({ phone });
-            if (uniquephone) return res.status(409).send({ status: false, message: "This phone already exists, Please try another one." });
+            if (uniquephone && uniquephone._id === customerId) return res.status(409).send({ status: false, message: "This phone already exists, Please try another one." });
 
             customerFound.phone = phone;
         }
@@ -355,6 +351,7 @@ let deleteCustomer = async function (req, res) {
         return res.status(200).send({ status: true, message: "Customer deleted Successfully..." });
     }
     catch (err) {
+        console.log(err)
         return res.status(500).send({ status: false, message: err.message });
     }
 }
